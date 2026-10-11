@@ -183,5 +183,22 @@ class EndToEndTests(unittest.TestCase):
             self.assertEqual((fl.port, fl.states, fl.samples), (1433, {"Established", "TimeWait"}, 12))
 
 
+class SpreadsheetSafetyTests(unittest.TestCase):
+    def test_formula_values_are_neutralised(self):
+        from openpyxl import load_workbook
+        from appdepend.report import safe_cell, write_excel
+
+        self.assertEqual(safe_cell("=HYPERLINK(\"http://x\")"), "'=HYPERLINK(\"http://x\")")
+        self.assertEqual(safe_cell("@SUM(A1)"), "'@SUM(A1)")
+        self.assertEqual(safe_cell("w3wp"), "w3wp")
+        self.assertEqual(safe_cell(-5), -5)  # real numbers are untouched
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "x.xlsx"
+            write_excel(p, [("S", [{"Process": "=cmd|' /C calc'!A0", "Port": 445}], "")])
+            ws = load_workbook(p)["S"]
+            self.assertEqual(ws["A2"].data_type, "s")
+            self.assertTrue(ws["A2"].value.startswith("'="))
+
+
 if __name__ == "__main__":
     unittest.main()

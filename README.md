@@ -1,4 +1,15 @@
-# AppDepend: application dependency mapping for vSphere → AIS Cloud (OCI) migration waves
+# VM Dependency Mapper & Migration Wave Planner (vSphere → AIS Cloud / OCI Alloy)
+
+This repository has two parts:
+
+| Part | Status | Use it for |
+|---|---|---|
+| **[`backend/`](backend/): the MVP** that follows the *Architecture Recommendation & MVP Implementation Brief*: agentless, evidence-backed, PostgreSQL, FastAPI | **Phase 1 done** (inventory import and validation). Phase 2 waits for review and the telemetry-source decision | The supported path. Plan and status: [`docs/mvp/PLAN.md`](docs/mvp/PLAN.md) |
+| **`collector/` + `analyzer/`: the earlier AppDepend tool** (below) | Works, but **outside MVP scope**: its collector runs a script on every VM, which the brief excludes (§2.2) | A pilot or second opinion where a change exception allows a script on VMs. It is the only source with *process identity*. Its algorithms are being ported into `backend/` |
+
+---
+
+# AppDepend (pre-MVP tool): application dependency mapping for vSphere → OCI migration waves
 
 AppDepend finds out **which servers talk to which** before you pick the VMs for a migration
 wave, then **checks a wave plan** against that data. It is built for Windows Server
@@ -49,7 +60,8 @@ No install is needed either: `python -m appdepend ...` from the `analyzer` folde
 
 ### 1. Collect (2–4 weeks, including a month-end)
 
-The collector is read-only and agentless (it is just a script plus a Scheduled Task). It uses
+The collector is read-only and installs no software, but it **is not agentless**: it runs a
+PowerShell script from a Scheduled Task on every VM, which needs change approval. It uses
 `Get-NetTCPConnection`, falling back to `netstat -ano`, so it runs on Windows Server 2012 RTM
 (PowerShell 3.0) through 2025. CPU cost is one TCP table read every 15 s.
 
@@ -145,10 +157,13 @@ network flows cannot provide.
 ## Repository layout
 
 ```
-collector/   PowerShell: collector + WinRM and VMware Tools deployment
-analyzer/    Python package `appdepend` (CLI, analysis, Excel/HTML reports) + tests
-samples/     Generated demo dataset, example config.json
-docs/        Collector output format
+backend/     MVP service (FastAPI, SQLAlchemy, Alembic): inventory import, Phase 1
+sample_data/ synthetic inventory CSVs for the MVP
+docs/mvp/    MVP plan, inventory CSV schema, telemetry schema proposal
+collector/   pre-MVP: PowerShell collector + WinRM and VMware Tools deployment
+analyzer/    pre-MVP: Python package `appdepend` (CLI, analysis, Excel/HTML reports) + tests
+samples/     pre-MVP demo dataset, example config.json
+docs/        collector output format
 ```
 
 Tests: `cd analyzer && python -m unittest discover -s tests`

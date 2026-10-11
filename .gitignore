@@ -8,3 +8,9 @@ report/
 # Real customer collection data should not be committed
 collected/
 !samples/collected/
+
+# MVP backend: local config and databases must never be committed
+.env
+backend/data/
+*.db
+.pytest_cache/

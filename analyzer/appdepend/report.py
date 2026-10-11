@@ -18,6 +18,17 @@ COLORED_COLS = {"Status", "Risk", "Collected", "Max Sensitivity", "Latency Sensi
 
 # ---------------------------------------------------------------- Excel
 
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def safe_cell(value):
+    """Neutralise spreadsheet formula injection: collected data (process names, hostnames,
+    CSV fields) is untrusted, and Excel evaluates strings starting with = + - @."""
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
 
 def _write_sheet(wb, title: str, rows: list[dict], note: str = "") -> None:
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -42,7 +53,7 @@ def _write_sheet(wb, title: str, rows: list[dict], note: str = "") -> None:
     for i, r in enumerate(rows, start + 1):
         for j, c in enumerate(cols, 1):
             v = r.get(c, "")
-            cell = ws.cell(row=i, column=j, value=v)
+            cell = ws.cell(row=i, column=j, value=safe_cell(v))
             if c in COLORED_COLS and str(v) in STATUS_FILLS:
                 cell.fill = PatternFill("solid", fgColor=STATUS_FILLS[str(v)])
             widths[j - 1] = max(widths[j - 1], min(60, len(str(v))))
