@@ -1,0 +1,22 @@
+{
+  "_comment": "Optional analyzer settings. Pass with: appdepend analyze -c config.json ...",
+
+  "shared_vms": ["FILE01"],
+  "group_min_persistence_pct": 5,
+
+  "add_infra_ports": [6160, 9392, 10005],
+  "remove_infra_ports": [],
+  "add_admin_ports": [],
+  "ignore_ports": [],
+  "ignore_processes": ["MsMpEng", "CcmExec"],
+  "ignore_cidrs": [],
+
+  "port_catalog": {
+    "8443": ["ERP app server", "Medium"],
+    "1414": ["IBM MQ", "High"]
+  },
+
+  "min_collection_days": 14,
+  "hub_min_peers": 5,
+  "large_group_size": 25
+}

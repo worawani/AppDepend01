@@ -1,0 +1,2 @@
+﻿"Hostname","FQDN","Domain","OS","OSVersion","PSVersion","IPAddresses","CollectionStart","CollectionEnd","Samples","IntervalSeconds","CollectorVersion","Method"
+"JUMP01","jump01.corp.local","corp.local","Microsoft Windows Server 2022","","5.1","10.10.0.50","2026-09-01T00:00:00","2026-09-22T00:00:00","116928","15","1.0.0","Get-NetTCPConnection"

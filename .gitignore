@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+report/
+.venv/
+# Real customer collection data should not be committed
+collected/
+!samples/collected/

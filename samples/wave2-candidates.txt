@@ -1,0 +1,4 @@
+# ad-hoc selection for appdepend check --vms-file
+HR-WEB01
+HR-WEB02
+HR-APP01

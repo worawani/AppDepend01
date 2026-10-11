@@ -1,0 +1,2 @@
+﻿"Hostname","FQDN","Domain","OS","OSVersion","PSVersion","IPAddresses","CollectionStart","CollectionEnd","Samples","IntervalSeconds","CollectorVersion","Method"
+"HR-WEB01","hr-web01.corp.local","corp.local","Microsoft Windows Server 2016","","5.1","10.20.1.11","2026-09-01T00:00:00","2026-09-22T00:00:00","116928","15","1.0.0","Get-NetTCPConnection"

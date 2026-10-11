@@ -1,0 +1,4 @@
+﻿"Hostname","LocalAddress","LocalPort","ProcessName","ProcessPath","ServiceNames","FirstSeen","LastSeen"
+"HR-WEB01","0.0.0.0","443","System","","","2026-09-01T00:00:00","2026-09-22T00:00:00"
+"HR-WEB01","0.0.0.0","3389","svchost","","","2026-09-01T00:00:00","2026-09-22T00:00:00"
+"HR-WEB01","0.0.0.0","6160","VeeamDeploymentSvc","","","2026-09-01T00:00:00","2026-09-22T00:00:00"

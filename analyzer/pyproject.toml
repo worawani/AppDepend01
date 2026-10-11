@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "appdepend"
+version = "1.0.0"
+description = "Application dependency analysis for vSphere -> OCI (AIS Cloud) migration wave planning"
+requires-python = ">=3.9"
+dependencies = ["openpyxl>=3.0"]
+
+[project.scripts]
+appdepend = "appdepend.cli:main"
+
+[tool.setuptools]
+packages = ["appdepend"]
+
+[tool.setuptools.package-data]
+appdepend = ["vendor/*"]
