@@ -1,0 +1,7 @@
+ip,record_type,hostname,mac,valid_from,valid_to,source,record_ref
+10.50.0.98,dns_a,legacy01.corp.example,,,,dns-export,DNS-1
+10.50.0.30,dns_ptr,rpt01.olddomain.local,,,,dns-export,DNS-2
+10.50.1.20,static,mq-prod-01.corp.example,,,,ipam,IPAM-1
+10.60.0.21,dhcp_lease,nb-somchai.corp.example,a4:5e:60:11:22:33,2026-09-01T00:00:00+07:00,2026-09-08T00:00:00+07:00,dhcp-export,DHCP-1
+10.60.0.50,dhcp_lease,,00:50:56:00:00:0a,2026-09-01T00:00:00+07:00,2026-09-03T23:59:59+07:00,dhcp-export,DHCP-2
+10.60.0.50,dhcp_lease,,f0:de:f1:99:88:77,2026-09-04T00:00:00+07:00,2026-09-08T00:00:00+07:00,dhcp-export,DHCP-3

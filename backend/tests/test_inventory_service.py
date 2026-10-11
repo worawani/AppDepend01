@@ -3,18 +3,20 @@ import time
 import pytest
 from sqlalchemy import func, select
 
+from app.config import Settings
 from app.importers.inventory import parse_inventory_csv
 from app.models import AuditEvent, ImportBatch, ImportIssue, VmInventory, VmNetworkInterface
 from app.sampledata import CANONICAL_HEADER, canonical_rows, error_rows, rvtools_rows, to_csv
 from app.services.inventory import ImportRefused, commit_import, plan_import
 
+SETTINGS = Settings(database_url="sqlite://")
 LIMITS = dict(max_bytes=50_000_000, max_rows=20_000, criticality_values=["critical", "high", "medium", "low"])
 
 
 def run(session, data: bytes, name="inv.csv", **kw):
     parsed = parse_inventory_csv(data, **LIMITS)
     plan = plan_import(session, parsed, data)
-    batch = commit_import(session, parsed, plan, file_name=name, data=data, actor="tester", **kw)
+    batch = commit_import(session, parsed, plan, settings=SETTINGS, file_name=name, data=data, actor="tester", **kw)
     return parsed, plan, batch
 
 
@@ -65,7 +67,7 @@ def test_errors_block_commit_unless_partial(session):
     session.rollback()
     assert count(session, VmInventory) == 0 and count(session, ImportBatch) == 0
 
-    _, _, batch = run(session, data, allow_partial=True)
+    _, _, batch = run(session, data, allow_partial=True, partial_reason="Owner confirmed rows 4-7 are decommissioned VMs")
     assert batch.status == "committed_partial"
     assert (batch.accepted_count, batch.rejected_count) == (8, 4)
     assert count(session, VmInventory) == 8

@@ -4,7 +4,7 @@ This repository has two parts:
 
 | Part | Status | Use it for |
 |---|---|---|
-| **[`backend/`](backend/): the MVP** that follows the *Architecture Recommendation & MVP Implementation Brief*: agentless, evidence-backed, PostgreSQL, FastAPI | **Phase 1 done** (inventory import and validation). Phase 2 waits for review and the telemetry-source decision | The supported path. Plan and status: [`docs/mvp/PLAN.md`](docs/mvp/PLAN.md) |
+| **[`backend/`](backend/): the MVP** that follows the *Architecture Recommendation & MVP Implementation Brief*: agentless, evidence-backed, PostgreSQL, FastAPI | **Phases 1–2 done**: inventory import, telemetry parser interface (canonical formats, synthetic-only), validation workflow, endpoint resolution. Vendor parser waits for the confirmed source and a sanitized sample | The supported path. Plan and status: [`docs/mvp/PLAN.md`](docs/mvp/PLAN.md) |
 | **`collector/` + `analyzer/`: the earlier AppDepend tool** (below) | Works, but **outside MVP scope**: its collector runs a script on every VM, which the brief excludes (§2.2) | A pilot or second opinion where a change exception allows a script on VMs. It is the only source with *process identity*. Its algorithms are being ported into `backend/` |
 
 ---

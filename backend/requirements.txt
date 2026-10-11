@@ -8,3 +8,4 @@ alembic==1.14.0
 uvicorn==0.34.0
 python-multipart==0.0.20
 psycopg[binary]==3.2.3
+tzdata==2024.2

@@ -12,6 +12,8 @@ import re
 import uuid
 from dataclasses import dataclass, field
 
+from .common import FileError, Issue, RejectedRow, check_invalid_ratio, decode_bytes, reserialise, sniff_dialect
+
 PARSER_VERSION = "inventory-1.0.0"
 SCHEMA_VERSION = "inventory-csv-v1"
 
@@ -48,22 +50,8 @@ _POWER = {"poweredon": "poweredOn", "on": "poweredOn", "running": "poweredOn",
           "suspended": "suspended"}
 
 
-class InventoryFileError(ValueError):
-    """The file as a whole cannot be processed (encoding, size, missing columns, ...)."""
-
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
-
-
-@dataclass
-class Issue:
-    severity: str            # error | warning | info
-    code: str
-    message: str
-    row_number: int | None = None
-    field: str | None = None
-    raw_value: str | None = None
+class InventoryFileError(FileError):
+    """Fatal inventory file error (kept as a named subclass for callers)."""
 
 
 @dataclass
@@ -102,6 +90,8 @@ class ParseResult:
     records: list[InventoryRecord]
     issues: list[Issue]
     column_map: dict[str, list[str]]
+    rejected: list[RejectedRow] = field(default_factory=list)
+    delimiter: str = ","
 
     @property
     def valid_records(self) -> list[InventoryRecord]:
@@ -139,36 +129,20 @@ def normalise_mac(text: str) -> str | None:
     return ":".join(m.groups()) if m else None
 
 
-def decode(data: bytes, encoding: str | None) -> tuple[str, str]:
-    if encoding:
-        try:
-            return data.decode(encoding), encoding
-        except (LookupError, UnicodeDecodeError) as exc:
-            raise InventoryFileError("encoding", f"File cannot be decoded as {encoding}: {exc}") from exc
-    try:
-        text = data.decode("utf-8-sig")
-    except UnicodeDecodeError as exc:
-        raise InventoryFileError(
-            "encoding",
-            f"File is not valid UTF-8 (byte offset {exc.start}). Save it as 'CSV UTF-8' or pass the encoding explicitly "
-            "(for example cp874 for Thai Windows exports).") from exc
-    return text, "utf-8"
-
-
 def parse_inventory_csv(data: bytes, *, max_bytes: int, max_rows: int, encoding: str | None = None,
-                        criticality_values: list[str] | None = None) -> ParseResult:
+                        criticality_values: list[str] | None = None, max_invalid_ratio: float = 0.5) -> ParseResult:
     if len(data) == 0:
         raise InventoryFileError("empty", "File is empty.")
     if len(data) > max_bytes:
         raise InventoryFileError("too_large", f"File is {len(data):,} bytes; the limit is {max_bytes:,}.")
-    text, used_encoding = decode(data, encoding)
+    try:
+        text, used_encoding = decode_bytes(data, encoding)
+    except FileError as exc:
+        raise InventoryFileError(exc.code, str(exc)) from exc
     if "\x00" in text:
         raise InventoryFileError("binary", "File contains NUL bytes; it is not a text CSV (an .xlsx saved as .csv?).")
 
-    try:
-        dialect = csv.Sniffer().sniff(text[:8192], delimiters=",;\t")
-    except csv.Error:
-        dialect = csv.excel
+    dialect = sniff_dialect(text[:8192])
     reader = csv.reader(io.StringIO(text), dialect)
     try:
         header = [h.strip() for h in next(reader)]
@@ -302,7 +276,19 @@ def parse_inventory_csv(data: bytes, *, max_bytes: int, max_rows: int, encoding:
 
     _cross_row_checks(records, issues)
     issues.sort(key=lambda i: (i.row_number is not None, i.row_number or 0))   # file-level first, then by row
-    return ParseResult(source_system, used_encoding, row_count, records, issues, column_map)
+    result = ParseResult(source_system, used_encoding, row_count, records, issues, column_map,
+                         delimiter=dialect.delimiter)
+    check_invalid_ratio(row_count, result.rejected_rows, max_invalid_ratio)
+    by_row: dict[int, list[dict]] = {}
+    for i in issues:
+        if i.severity == "error" and i.row_number is not None:
+            by_row.setdefault(i.row_number, []).append(
+                {"code": i.code, "field": i.field, "message": i.message, "raw_value": i.raw_value})
+    for r in records:
+        if not r.valid:   # raw preserves the original field order
+            result.rejected.append(RejectedRow(r.row_number, reserialise(list(r.raw.values()), dialect.delimiter),
+                                               by_row.get(r.row_number, [])))
+    return result
 
 
 def _cross_row_checks(records: list[InventoryRecord], issues: list[Issue]) -> None:

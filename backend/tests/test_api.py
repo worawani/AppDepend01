@@ -36,7 +36,8 @@ def test_validation_errors_return_409_and_are_audited(client):
     r = upload(client, to_csv(error_rows(), CANONICAL_HEADER), commit=True)
     assert r.status_code == 409 and r.json()["detail"]["code"] == "validation_errors"
     assert client.get("/api/vms").json()["total"] == 0
-    r = upload(client, to_csv(error_rows(), CANONICAL_HEADER), commit=True, allow_partial=True)
+    r = upload(client, to_csv(error_rows(), CANONICAL_HEADER), commit=True, allow_partial=True,
+               partial_reason="Rejected rows belong to retired VMs (ticket CHG-1234)")
     assert r.status_code == 200 and r.json()["rejected_rows"] == 4
     detail = client.get(f"/api/imports/{r.json()['batch_id']}").json()
     assert any(i["code"] == "missing_name" and i["row_number"] == 4 for i in detail["issues"])

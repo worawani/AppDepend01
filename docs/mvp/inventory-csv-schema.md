@@ -47,11 +47,14 @@ Unmapped columns are kept in `raw_record` (reported once as info).
    **remove an IP**, a warning `ips_removed` is raised. This is expected when an IP was re-assigned and wrong when the file only lists a primary IP.
 4. VMs missing from a later file are **not deleted**. `last_import_batch_id` shows when each was last seen.
 
-## Commit policy
+## Commit policy (same for every importer, see `import-workflow.md`)
 
-* Preview is the default and writes nothing.
-* Any **error** → commit refused (HTTP 409) unless `allow_partial=true`. Rejected rows and all
-  issues are then stored with the batch.
+* Preview is the default and writes nothing. It returns every issue and the rejected rows.
+* Any **error** → commit refused (HTTP 409). Importing only the valid rows needs `allow_partial=true`
+  **and** `partial_reason` (≥ 10 characters). The decision, reason and actor are stored on the batch
+  and in the audit log, and the rejected rows are stored verbatim. An administrator can disable partial
+  imports entirely (`VDM_ALLOW_PARTIAL_IMPORTS=false`).
+* More than 50 % invalid rows (`VDM_MAX_INVALID_RECORD_RATIO`) → the file is rejected as a whole.
 * A file with the **same SHA-256** as an earlier batch → refused unless `force=true`.
 * Limits: `VDM_MAX_UPLOAD_MB` (default 50), `VDM_MAX_INVENTORY_ROWS` (default 20,000). Only
   `.csv`/`.txt`. NUL bytes (an `.xlsx` renamed to `.csv`) are rejected.

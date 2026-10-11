@@ -122,3 +122,83 @@ class AuditEvent(Base):
     entity_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     outcome: Mapped[str] = mapped_column(String(32))
     details: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+# ---------------------------------------------------------------- Phase 2 (revision 0002)
+
+_BigId = BigInteger().with_variant(Integer, "sqlite")   # SQLite autoincrements only INTEGER PRIMARY KEY
+
+
+class ImportRejectedRow(Base):
+    """A record that failed validation, kept verbatim with its errors (never silently discarded)."""
+    __tablename__ = "import_rejected_row"
+
+    id: Mapped[int] = mapped_column(_BigId, primary_key=True, autoincrement=True)
+    batch_id: Mapped[str] = mapped_column(ForeignKey("import_batch.id", ondelete="CASCADE"), index=True)
+    row_number: Mapped[int] = mapped_column(Integer)
+    raw_text: Mapped[str] = mapped_column(Text)
+    errors: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class FlowObservation(Base):
+    """Telemetry aggregated per (hour, src, dst, protocol, dst port, action). The original
+    file stays identifiable through the batch hash; sample_refs point back to source records."""
+    __tablename__ = "flow_observation"
+    __table_args__ = (Index("ix_flow_observation_batch_bucket", "batch_id", "bucket_start"),)
+
+    id: Mapped[int] = mapped_column(_BigId, primary_key=True, autoincrement=True)
+    batch_id: Mapped[str] = mapped_column(ForeignKey("import_batch.id", ondelete="CASCADE"))
+    bucket_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    src_ip: Mapped[str] = mapped_column(String(45), index=True)
+    dst_ip: Mapped[str] = mapped_column(String(45), index=True)       # post-DNAT address when the source logs NAT
+    dst_ip_original: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    protocol: Mapped[str] = mapped_column(String(8))
+    dst_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    action: Mapped[str] = mapped_column(String(16))                    # allow | deny | observed | unknown
+    record_count: Mapped[int] = mapped_column(Integer)
+    flow_count: Mapped[int] = mapped_column(BigInteger)
+    bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    packets: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reverse_suspect_count: Mapped[int] = mapped_column(Integer, default=0)
+    sample_refs: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class AddressRecord(Base):
+    """Time-bounded IP <-> hostname/MAC evidence from DNS or DHCP exports."""
+    __tablename__ = "address_record"
+
+    id: Mapped[int] = mapped_column(_BigId, primary_key=True, autoincrement=True)
+    batch_id: Mapped[str] = mapped_column(ForeignKey("import_batch.id", ondelete="CASCADE"), index=True)
+    ip: Mapped[str] = mapped_column(String(45), index=True)
+    mac: Mapped[str | None] = mapped_column(String(17), nullable=True, index=True)
+    hostname: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    record_type: Mapped[str] = mapped_column(String(16))               # dns_a | dns_ptr | dhcp_lease | static
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_row_ref: Mapped[str] = mapped_column(String(128))
+
+
+class EndpointMapping(Base):
+    """Result of resolving one observed IP for one flow batch over a time window.
+    Unresolved and ambiguous endpoints are stored too; nothing is forced onto a VM."""
+    __tablename__ = "endpoint_mapping"
+
+    id: Mapped[int] = mapped_column(_BigId, primary_key=True, autoincrement=True)
+    flow_batch_id: Mapped[str] = mapped_column(ForeignKey("import_batch.id", ondelete="CASCADE"), index=True)
+    ip: Mapped[str] = mapped_column(String(45), index=True)
+    endpoint_class: Mapped[str] = mapped_column(String(16))            # internal | external | special
+    status: Mapped[str] = mapped_column(String(16), index=True)        # resolved | ambiguous | unresolved
+    vm_id: Mapped[str | None] = mapped_column(ForeignKey("vm_inventory.id", ondelete="SET NULL"), nullable=True, index=True)
+    method: Mapped[str] = mapped_column(String(32))
+    confidence: Mapped[str] = mapped_column(String(8))                 # high | medium | low | none
+    candidate_vm_ids: Mapped[list] = mapped_column(JSON, default=list)
+    reason: Mapped[str] = mapped_column(Text)
+    evidence: Mapped[dict] = mapped_column(JSON, default=dict)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    bucket_count: Mapped[int] = mapped_column(Integer)
+    flow_count: Mapped[int] = mapped_column(BigInteger)
+    resolver_version: Mapped[str] = mapped_column(String(32))
+    resolved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

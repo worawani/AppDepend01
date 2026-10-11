@@ -9,17 +9,12 @@ from dataclasses import dataclass, field, replace
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config import Settings
 from ..importers.inventory import PARSER_VERSION, SCHEMA_VERSION, InventoryRecord, Issue, ParseResult
-from ..models import AuditEvent, ImportBatch, ImportIssue, VmInventory, VmNetworkInterface, utcnow
+from ..models import ImportBatch, VmInventory, VmNetworkInterface, utcnow
+from .policy import ImportRefused, audit_import, audit_refusal, enforce_commit_policy, previous_batch, store_issues_and_rejects
 
-
-class ImportRefused(Exception):
-    """Commit refused by policy (errors present, or the identical file was already imported)."""
-
-    def __init__(self, code: str, message: str, batch_id: str | None = None):
-        super().__init__(message)
-        self.code = code
-        self.batch_id = batch_id
+__all__ = ["ImportRefused", "audit_refusal", "commit_import", "file_sha256", "plan_import"]
 
 
 @dataclass
@@ -94,10 +89,7 @@ def _changes(rec: InventoryRecord, vm: VmInventory, fields: list[str], interface
 
 def plan_import(session: Session, parsed: ParseResult, data: bytes) -> ImportPlan:
     plan = ImportPlan(sha256=file_sha256(data))
-    prev = session.scalar(select(ImportBatch.id).where(ImportBatch.file_sha256 == plan.sha256,
-                                                       ImportBatch.source_type == "inventory")
-                          .order_by(ImportBatch.imported_at.desc()).limit(1))
-    plan.previous_batch_id = prev
+    plan.previous_batch_id = previous_batch(session, plan.sha256, "inventory")
 
     valid = parsed.valid_records
     keys = [r.identity_key for r in valid]
@@ -144,15 +136,12 @@ def plan_import(session: Session, parsed: ParseResult, data: bytes) -> ImportPla
     return plan
 
 
-def commit_import(session: Session, parsed: ParseResult, plan: ImportPlan, *, file_name: str, data: bytes,
-                  actor: str, allow_partial: bool = False, force: bool = False) -> ImportBatch:
+def commit_import(session: Session, parsed: ParseResult, plan: ImportPlan, *, settings: Settings, file_name: str,
+                  data: bytes, actor: str, allow_partial: bool = False, partial_reason: str | None = None,
+                  force: bool = False) -> ImportBatch:
     errors = parsed.count("error")
-    if plan.previous_batch_id and not force:
-        raise ImportRefused("duplicate_file", "This exact file was already imported "
-                            f"(batch {plan.previous_batch_id}). Pass force=true to import it again.", plan.previous_batch_id)
-    if errors and not allow_partial:
-        raise ImportRefused("validation_errors", f"{errors} validation error(s). Fix the file, or pass "
-                            "allow_partial=true to import only the valid rows (the rejected rows are recorded).")
+    partial = enforce_commit_policy(settings, errors=errors, rejected=parsed.rejected_rows, allow_partial=allow_partial,
+                                    partial_reason=partial_reason, previous_batch_id=plan.previous_batch_id, force=force)
 
     all_issues = parsed.issues + plan.extra_issues
     batch = ImportBatch(
@@ -162,7 +151,8 @@ def commit_import(session: Session, parsed: ParseResult, plan: ImportPlan, *, fi
         row_count=parsed.row_count, accepted_count=len(parsed.valid_records), rejected_count=parsed.rejected_rows,
         warning_count=sum(1 for i in all_issues if i.severity == "warning"),
         summary={"new": len(plan.new), "updated": len(plan.updated), "unchanged": len(plan.unchanged),
-                 "errors": errors, "column_map": parsed.column_map, "forced": bool(plan.previous_batch_id and force)},
+                 "errors": errors, "column_map": parsed.column_map, "forced": bool(plan.previous_batch_id and force),
+                 "partial_import": partial and {**partial, "decided_by": actor}},
     )
     session.add(batch)
     session.flush()
@@ -195,21 +185,10 @@ def commit_import(session: Session, parsed: ParseResult, plan: ImportPlan, *, fi
     for rec, vm in plan.unchanged:
         touch(vm, rec)
 
-    for i in all_issues:
-        session.add(ImportIssue(batch_id=batch.id, row_number=i.row_number, severity=i.severity, code=i.code,
-                                field=i.field, message=i.message, raw_value=i.raw_value))
-    session.add(AuditEvent(
-        actor=actor, action="inventory.import", entity_type="import_batch", entity_id=batch.id,
-        outcome=batch.status,
-        details={"file_name": file_name, "sha256": plan.sha256, "rows": parsed.row_count, **batch.summary,
-                 "updated_vms": {vm.id: ch for _, vm, ch in plan.updated[:200]}},
-    ))
+    dropped = store_issues_and_rejects(session, batch, all_issues, parsed.rejected, settings.max_rejected_rows_stored)
+    audit_import(session, batch, actor, "inventory.import",
+                 {"file_name": file_name, "sha256": plan.sha256, "rows": parsed.row_count, **batch.summary,
+                  "rejected_rows_not_stored": dropped,
+                  "updated_vms": {vm.id: ch for _, vm, ch in plan.updated[:200]}})
     session.commit()
     return batch
-
-
-def audit_refusal(session: Session, *, actor: str, file_name: str, sha256: str, reason: ImportRefused) -> None:
-    session.add(AuditEvent(actor=actor, action="inventory.import", entity_type="import_batch", entity_id=reason.batch_id,
-                           outcome="refused", details={"file_name": file_name, "sha256": sha256, "code": reason.code,
-                                                       "message": str(reason)}))
-    session.commit()

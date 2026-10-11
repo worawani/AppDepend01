@@ -4,7 +4,8 @@ This document follows the reference *VM Dependency Mapper & Migration Wave Plann
 Recommendation and MVP Implementation Brief* (§13.1). It covers the repository review, the
 proposed structure, key decisions, the schema, the input schemas, and the Phase 1 plan and tests.
 
-**Status:** Phase 1 (first increment) implemented. **Waiting for review before Phase 2.**
+**Status:** Phase 1 done. **Phase 2 (parser interface, validation workflow, endpoint resolution) done.
+Waiting for review, the confirmed telemetry source and a sanitized sample.** See §8.
 
 ---
 
@@ -97,7 +98,9 @@ Field lists follow reference §5.2 and §8.
 ## 4. Input schemas
 
 * Inventory CSV v1: [`inventory-csv-schema.md`](inventory-csv-schema.md) (implemented, includes RVTools vInfo header aliases)
-* Telemetry CSV v0: [`telemetry-schema-proposal.md`](telemetry-schema-proposal.md) (**draft**, waiting for the format decision)
+* Telemetry: [`telemetry-schema.md`](telemetry-schema.md) (parser interface + canonical flow and address CSVs; synthetic-only)
+* Endpoint resolution: [`endpoint-resolution.md`](endpoint-resolution.md)
+* Import workflow: [`import-workflow.md`](import-workflow.md)
 
 ## 5. Phase 1 plan (first increment): done
 
@@ -131,3 +134,34 @@ Field lists follow reference §5.2 and §8.
   coverage metrics, security tests.
 * **Phase 4:** on-prem deployment (Docker Compose if approved), TLS, backup/restore test, pilot
   against one application with known dependencies.
+
+## 8. Phase 2: approved decisions and what was built
+
+Decisions (approved): modular parser-based ingestion; **no vendor parser until the real source and a
+sanitized sample are confirmed**; synthetic fixtures meanwhile; fatal file errors vs. record errors;
+partial import only by explicit, audited decision; stable identifiers first, name-only matches low-confidence
+or ambiguous; unresolved endpoints preserved.
+
+| Item | Where |
+|---|---|
+| Parser interface + registry (canonical flow + address CSV only) | `app/telemetry/` |
+| Shared validation workflow: fatal `FileError`, bounded `IssueLog`, rejected rows, policy | `app/importers/common.py`, `app/services/policy.py` |
+| Partial import = `allow_partial` + written `partial_reason` (+ admin switch); applied to inventory too | `services/policy.py` |
+| Rejected rows stored verbatim; downloadable error report (spreadsheet-safe) | `import_rejected_row`, `GET /api/imports/{id}/error-report.csv` |
+| Aggregated flow storage with provenance; DNAT handling | `flow_observation`, `telemetry/aggregate.py` |
+| DNS/DHCP evidence with validity periods | `address_record` |
+| Endpoint resolution rules R1–R6, persisted with reason/evidence/window | `resolution/resolver.py`, `endpoint_mapping` |
+| Migration 0002 | `migrations/versions/0002_phase2_telemetry.py` |
+| Synthetic fixtures | `sample_data/flows_*.csv`, `address_records_canonical.csv` |
+
+**Phase 1 behaviour changed by decision 3** (re-review please): `allow_partial=true` alone is now
+refused; a `partial_reason` is required. Inventory files with > 50 % invalid rows are now rejected as a whole.
+
+**Measured performance** (worst-case synthetic, PostgreSQL 16, one process): 500k records → parse
+10 s, commit 25 s, resolve 5 s, peak 515 MB including about 200 MB of benchmark harness. The default row limit was lowered
+to 2M accordingly. Re-measure with the real sample.
+
+**Next (Phase 2b, after the source is confirmed):** vendor parser against the sanitized sample;
+dependency aggregation (VM↔VM edges with evidence class), auth/roles, then the UI (dependency table
+with evidence drill-down first, then wave assignment and cross-wave warnings).
+
